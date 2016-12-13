@@ -1,0 +1,18 @@
+#!/bin/sh
+echo -n "insert GPU number:"
+read gpu
+echo -n "insert GPU factor:"
+read gpu_factor
+echo -n "insert dataset:"
+read datasetname
+
+echo -n "insert number of block:"
+read block
+if [ -z "$gpu" ]||[-z "$gpu_factor"]||[-z "$datasetname"]
+then
+    echo "Dont forget insert GPU number, GPU factor and datasetname  \n"
+exit
+else
+CUDA_VISIBLE_DEVICES=$gpu python main.py --gpu $gpu_factor --dataset $datasetname --num_block $block
+fi
+

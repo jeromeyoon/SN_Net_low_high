@@ -1,0 +1,16 @@
+#!/bin/sh
+echo -n "insert GPU number:"
+read gpu
+echo -n "insert GPU factor:"
+read gpu_factor
+
+echo -n "insert number of block:"
+read block
+if [ -z "$gpu" ]||[-z "$gpu_factor"]
+then
+    echo "Please insert GPU number and GPU factor \n"
+exit
+else
+CUDA_VISIBLE_DEVICES=$gpu python main.py --is_train true --is_crop true --gpu $gpu_factor --num_block $block
+fi
+
