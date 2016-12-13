@@ -57,7 +57,7 @@ def conv_cond_concat(x, y):
     return tf.concat(3, [x, y*tf.ones([x_shapes[0], x_shapes[1], x_shapes[2], y_shapes[3]])])
 
 def conv2d(input_, output_dim,
-           k_h=5, k_w=5, d_h=1, d_w=1, stddev=0.02,padding='SAME',
+           k_h=4, k_w=4, d_h=1, d_w=1, stddev=0.02,padding='SAME',
            name="conv2d"):
     with tf.variable_scope(name):
         w = tf.get_variable('w', [k_h, k_w, input_.get_shape()[-1], output_dim],

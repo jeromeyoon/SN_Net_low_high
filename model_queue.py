@@ -37,47 +37,64 @@ class DCGAN(object):
 
         	self.ir_images = tf.placeholder(tf.float32, [self.batch_size] + self.ir_image_shape,
                                     name='ir_images')
+        	self.low_normal_images = tf.placeholder(tf.float32, [self.batch_size] + self.normal_image_shape,
+                                    name='normal_images')
         	self.normal_images = tf.placeholder(tf.float32, [self.batch_size] + self.normal_image_shape,
                                     name='normal_images')
 	else:
 		print ' using queue loading'
 		self.ir_image_single = tf.placeholder(tf.float32,shape=self.ir_image_shape)
+		self.low_normal_image_single = tf.placeholder(tf.float32,shape=self.normal_image_shape)
 		self.normal_image_single = tf.placeholder(tf.float32,shape=self.normal_image_shape)
-		q = tf.FIFOQueue(4000,[tf.float32,tf.float32],[[self.ir_image_shape[0],self.ir_image_shape[1],1],[self.normal_image_shape[0],self.normal_image_shape[1],3]])
-		self.enqueue_op = q.enqueue([self.ir_image_single,self.normal_image_single])
-		self.ir_images, self.normal_images = q.dequeue_many(self.batch_size)
+		q = tf.FIFOQueue(4000,[tf.float32,tf.float32,tf.float32],[[self.ir_image_shape[0],self.ir_image_shape[1],1],[self.normal_image_shape[0],self.normal_image_shape[1],3],[self.low_normal_image_shape[0],self.low_normal_image_shape[1],3]])
+		self.enqueue_op = q.enqueue([self.ir_image_single,self.low_normal_image_single,self.normal_image_single])
+		self.ir_images, self.low_normal_images, self.normal_images = q.dequeue_many(self.batch_size)
 
         #self.ir_test = tf.placeholder(tf.float32, [1,600,800,1],name='ir_test')
 	self.keep_prob = tf.placeholder(tf.float32)
 	net  = networks(self.num_block,self.batch_size,self.df_dim)
-	self.G = net.generator(self.ir_images)
+	self.low_G = net.generator_low(self.ir_images)
+	self.high_G = net.generator_high(self.high_G)
 	#self.sample = net.sampler(self.ir_test)
 	if self.pair:
-	    self.D = net.discriminator(tf.concat(3,[self.normal_images,self.ir_images]),self.keep_prob)
-	    self.D_  = net.discriminator(tf.concat(3,[self.G,self.ir_images]),self.keep_prob,reuse=True)
+	    self.low_D = net.discriminator(tf.concat(3,[self.low_normal_images,self.low_normal_images]),self.keep_prob)
+	    self.low_D_  = net.discriminator(tf.concat(3,[self.low_G,self.low_normal_images]),self.keep_prob,reuse=True)
+	    self.high_D = net.discriminator(tf.concat(3,[self.normal_images,self.normal_images]),self.keep_prob)
+	    self.high_D_  = net.discriminator(tf.concat(3,[self.high_G,self.normal_images]),self.keep_prob,reuse=True)
 	else:
-	    self.D = net.discriminator(self.normal_images,self.keep_prob)
-	    self.D_  = net.discriminator(self.G,self.keep_prob,reuse=True)
+	    self.low_D = net.discriminator(self.low_normal_images,self.keep_prob)
+	    self.low_D_  = net.discriminator(self.low_G,self.keep_prob,reuse=True)
+	    self.high_D = net.discriminator(self.normal_images,self.keep_prob)
+	    self.high_D_  = net.discriminator(self.high_G,self.keep_prob,reuse=True)
 
 	# generated surface normal
         #self.d_loss_real = binary_cross_entropy_with_logits(tf.pack(np.random.uniform(0.7,1.2,size=(self.batch_size,1)).astype(np.float32)), self.D)
         #self.d_loss_fake = binary_cross_entropy_with_logits(tf.pack(np.random.uniform(0.0,0.3,size=(self.batch_size,1)).astype(np.float32)), self.D_)
-        self.d_loss_real = binary_cross_entropy_with_logits(tf.random_uniform(self.D.get_shape(),minval=0.7,maxval=1.2,dtype=tf.float32,seed=0), self.D)
-        self.d_loss_fake = binary_cross_entropy_with_logits(tf.random_uniform(self.D.get_shape(),minval=0.0,maxval=0.3,dtype=tf.float32,seed=0), self.D_)
-        self.d_loss = self.d_loss_real + self.d_loss_fake
-	if self.loss == 'L1':
-            self.L_loss = tf.div(tf.reduce_sum(tf.abs(tf.sub(self.G,self.normal_images))),self.ir_image_shape[1]*self.ir_image_shape[2]*3)
-	else:
-            self.L_loss = tf.div(tf.reduce_sum(tf.square(tf.sub(self.G,self.normal_images))),self.ir_image_shape[1]*self.ir_image_shape[2]*3)
-        self.g_loss = binary_cross_entropy_with_logits(tf.ones_like(self.D_), self.D_)
+        self.low_d_loss_real = binary_cross_entropy_with_logits(tf.random_uniform(self.low_D.get_shape(),minval=0.7,maxval=1.2,dtype=tf.float32,seed=0), self.low_D)
+        self.low_d_loss_fake = binary_cross_entropy_with_logits(tf.random_uniform(self.low_D.get_shape(),minval=0.0,maxval=0.3,dtype=tf.float32,seed=0), self.low_D_)
+        self.low_d_loss = self.low_d_loss_real + self.low_d_loss_fake
 
-	self.ang_loss = norm_(self.G,self.normal_images)
-        self.gen_loss = self.g_loss + self.L_loss *100 + self.ang_loss 
+	self.high_d_loss_real = binary_cross_entropy_with_logits(tf.random_uniform(self.high_D.get_shape(),minval=0.7,maxval=1.2,dtype=tf.float32,seed=0), self.high_D)
+        self.high_d_loss_fake = binary_cross_entropy_with_logits(tf.random_uniform(self.high_D.get_shape(),minval=0.0,maxval=0.3,dtype=tf.float32,seed=0), self.high_D_)
+        self.high_d_loss = self.high_d_loss_real + self.high_d_loss_fake
+
+	if self.loss == 'L1':
+            self.L_loss = tf.div(tf.reduce_sum(tf.abs(tf.sub(self.high_G,self.normal_images))),self.ir_image_shape[1]*self.ir_image_shape[2]*3)
+	else:
+            self.L_loss = tf.div(tf.reduce_sum(tf.square(tf.sub(self.high_G,self.normal_images))),self.ir_image_shape[1]*self.ir_image_shape[2]*3)
+
+        self.low_g_loss = binary_cross_entropy_with_logits(tf.ones_like(self.low_D_), self.low_D_)
+        self.high_g_loss = binary_cross_entropy_with_logits(tf.ones_like(self.high_D_), self.high_D_)
+
+	self.ang_loss = norm_(self.high_G,self.normal_images)
+        self.high_gen_loss = self.g_loss + self.L_loss *100 + self.ang_loss 
 
 	self.saver = tf.train.Saver(max_to_keep=10)
 	t_vars = tf.trainable_variables()
-	self.d_vars =[var for var in t_vars if 'd_' in var.name]
-	self.g_vars =[var for var in t_vars if 'g_' in var.name]
+	self.low_d_vars =[var for var in t_vars if 'low_d_' in var.name]
+	self.high_d_vars =[var for var in t_vars if 'high_d_' in var.name]
+	self.low_g_vars =[var for var in t_vars if 'low_g_' in var.name]
+	self.high_g_vars =[var for var in t_vars if 'high_g_' in var.name]
 	
 
     def train(self, config):
@@ -85,11 +102,17 @@ class DCGAN(object):
 
         global_step = tf.Variable(0,name='global_step',trainable=False)
         global_step1 = tf.Variable(0,name='global_step1',trainable=False)
+        global_step2 = tf.Variable(0,name='global_step2',trainable=False)
+        global_step3 = tf.Variable(0,name='global_step3',trainable=False)
 	
-	d_optim = tf.train.AdamOptimizer(config.d_learning_rate,beta1=config.beta1) \
-                          .minimize(self.d_loss, global_step=global_step,var_list=self.d_vars)
-        g_optim = tf.train.AdamOptimizer(config.g_learning_rate,beta1=config.beta1) \
-                          .minimize(self.gen_loss, global_step=global_step1,var_list=self.g_vars)
+	low_d_optim = tf.train.AdamOptimizer(config.d_learning_rate,beta1=config.beta1) \
+                          .minimize(self.low_d_loss, global_step=global_step,var_list=self.low_d_vars)
+	high_d_optim = tf.train.AdamOptimizer(config.d_learning_rate,beta1=config.beta1) \
+                          .minimize(self.high_d_loss, global_step=global_step1,var_list=self.high_d_vars)
+        low_g_optim = tf.train.AdamOptimizer(config.g_learning_rate,beta1=config.beta1) \
+                          .minimize(self.low_g_loss, global_step=global_step2,var_list=self.low_g_vars)
+        high_g_optim = tf.train.AdamOptimizer(config.g_learning_rate,beta1=config.beta1) \
+                          .minimize(self.high_gen_loss, global_step=global_step3,var_list=self.high_g_vars)
 	tf.initialize_all_variables().run()
 	
         start_time = time.time()
@@ -100,9 +123,11 @@ class DCGAN(object):
             print(" [!] Load failed...")
 
         # loda training and validation dataset path
-        data = json.load(open("/research2/ECCV_journal/with_light/json/traininput.json"))
-        data_label = json.load(open("/research2/ECCV_journal/with_light/json/traingt.json"))
+        data = json.load(open("/research2/ECCV_journal/low_high/json/traininput.json"))
+        low_data_label = json.load(open("/research2/ECCV_journal/low_high/json/low_traingt.json"))
+        data_label = json.load(open("/research2/ECCV_journal/low_high/json/traingt.json"))
         datalist =[data[idx] for idx in xrange(0,len(data))]
+        low_labellist =[low_data_label[idx] for idx in xrange(0,len(data))]
         labellist =[data_label[idx] for idx in xrange(0,len(data))]
 	shuf = range(len(data))
         list_val = [11,16,21,22,33,36,38,53,59,92]
@@ -113,7 +138,7 @@ class DCGAN(object):
 	    coord = tf.train.Coordinator()
             num_thread =16
             for i in range(num_thread):
- 	        t = threading.Thread(target=self.load_and_enqueue,args=(coord,datalist,labellist,shuf,i,num_thread))
+ 	        t = threading.Thread(target=self.load_and_enqueue,args=(coord,datalist,low_labellist,labellist,shuf,i,num_thread))
 	 	t.start()
 
 	if self.use_queue:
@@ -121,51 +146,41 @@ class DCGAN(object):
 	        #shuffle = np.random.permutation(range(len(data)))
 	        batch_idxs = min(len(data), config.train_size)/config.batch_size
 		sum_L = 0.0
-		sum_g =0.0
+		sum_low_g =0.0
+		sum_high_g =0.0
 		sum_ang =0.0
-		sum_d_real =0.0
-		sum_d_fake =0.0
+		sum_low_d_real =0.0
+		sum_low_d_fake =0.0
+		sum_high_d_real =0.0
+		sum_high_d_fake =0.0
 		if epoch ==0:
 		    train_log = open(os.path.join("logs",'train_%s.log' %config.dataset),'w')
-		    val_log = open(os.path.join("logs",'val_%s.log' %config.dataset),'w')
 		else:
 	    	    train_log = open(os.path.join("logs",'train_%s.log' %config.dataset),'aw')
-		    val_log = open(os.path.join("logs",'val_%s.log' %config.dataset),'w')
 
 		for idx in xrange(0,batch_idxs):
         	     start_time = time.time()
-		     _,d_loss_real,d_loss_fake =self.sess.run([d_optim,self.d_loss_real,self.d_loss_fake],feed_dict={self.keep_prob:self.dropout})
-		     _,g_loss,L_loss,ang_loss =self.sess.run([g_optim,self.g_loss,self.ang_loss,self.L_loss],feed_dict={self.keep_prob:self.dropout})
-		     print("Epoch: [%2d] [%4d/%4d] time: %4.4f g_loss: %.6f L_loss:%.4f ang_loss: %.6f d_loss_real:%.4f d_loss_fake:%.4f" \
-		     % (epoch, idx, batch_idxs,time.time() - start_time,g_loss,L_loss,ang_loss,d_loss_real,d_loss_fake))
+		     _,low_d_loss_real,low_d_loss_fake =self.sess.run([low_d_optim,self.low_d_loss_real,self.low_d_loss_fake],feed_dict={self.keep_prob:self.dropout})
+		     _,low_g_loss =self.sess.run([g_optim,self.g_loss],feed_dict={self.keep_prob:self.dropout})
+		     _,high_d_loss_real,high_d_loss_fake =self.sess.run([high_d_optim,self.high_d_loss_real,self.high_d_loss_fake],feed_dict={self.keep_prob:self.dropout})
+		     _,high_g_loss,L_loss,ang_loss =self.sess.run([high_g_optim,self.high_g_loss,self.L_loss,self.ang_loss],feed_dict={self.keep_prob:self.dropout})
+
+		     print("Epoch: [%2d] [%4d/%4d] time: %4.4f low_g_loss: %.6f low_d_loss_real:%.4f low_d_loss_fake:%.4f" \
+		     % (epoch, idx, batch_idxs,time.time() - start_time,low_g_loss,low_d_loss_real,low_d_loss_fake))
+		     print("Epoch: [%2d] [%4d/%4d] time: %4.4f high_g_loss: %.6f L_loss:%.4f ang_loss: %.6f high_d_loss_real:%.4f high_d_loss_fake:%.4f" \
+		     % (epoch, idx, batch_idxs,time.time() - start_time,high_g_loss,L_loss,ang_loss,high_d_loss_real,high_d_loss_fake))
+
 		     sum_L += L_loss 	
-		     sum_g += g_loss
+		     sum_low_g += low_g_loss
+		     sum_high_g += high_g_loss
 		     sum_ang += ang_loss
-		     sum_d_real += d_loss_real
-	  	     sum_d_fake += d_loss_fake	
-		train_log.write('epoch %06d mean_g %.6f  mean_L %.6f mean_ang %.6f d_real %.6f d_fake %.6f\n' %(epoch,sum_g/(batch_idxs),sum_L/(batch_idxs),sum_ang/batch_idxs,sum_d_real/(batch_idxs),sum_d_fake/batch_idxs))
+		     sum_low_d_real += low_d_loss_real
+	  	     sum_low_d_fake += low_d_loss_fake	
+		     sum_high_d_real += high_d_loss_real
+	  	     sum_high_d_fake += high_d_loss_fake	
+		train_log.write('epoch %06d mean_low_g %.6f  mean_high_g %.6f mean_L %.6f mean_ang %.6f low_d_real %.6f low_d_fake %.6f high_d_real %.6f high_d_fake %.6f \n' %(epoch,sum_low_g/(batch_idxs),sum_high_g/batch_idxs,sum_L/(batch_idxs),sum_ang/batch_idxs,sum_low_d_real/(batch_idxs),sum_low_d_fake/batch_idxs,sum_high_d_real/batch_idxs,sum_high_d_fake/batch_idxs))
 		train_log.close()
 	        self.save(config.checkpoint_dir,global_step)
-		"""
-		####### Validation #########
-		for idx2 in xrange(0,len(list_val)):
-		    for tilt in range(1,10):	
-		        print("Epoch: [%2d] [%4d/%4d] " % (epoch, idx2, len(list_val)))
-		        img = '/research2/IR_normal_small/save%03d/%d' % (list_val[idx2],tilt)
-			light = random.randint(1,12)
-			input_ = scipy.misc.imread(img+'/%d3.bmp' %light).astype(float)
-			input_ = scipy.misc.imresize(input_,[600,800])
-			input_ = input_/127.5 - 1.0
-			input_ = np.reshape(input_,[1,600,800,1])
-			gt_ = scipy.misc.imread(img+'/12_Normal.bmp').astype(float)
-			gt_ = gt_/127.5 -1.0
- 		        sample = self.sess.run([self.sample],feed_dict={self.ir_test: input_})
-			L1_loss = tf.reduce_mean(tf.square(tf.sub(sample,gt_)))
-			sum_L1 += L1_loss
-			
-		val_log.write('epoch %06d mean_L1 %.6f \n' %(epoch,sum_L1/(len(range(1,10)*len(list_val)))))
-		val_log.close()
-		"""
 
 	else:
 	    for epoch in xrange(config.epoch):
@@ -221,7 +236,7 @@ class DCGAN(object):
             return False
 
 	    
-    def load_and_enqueue(self,coord,file_list,label_list,shuf,idx=0,num_thread=1):
+    def load_and_enqueue(self,coord,file_list,low_label_list,label_list,shuf,idx=0,num_thread=1):
 	count =0;
 	length = len(file_list)
 	rot=[0,90,180,270]
@@ -229,13 +244,16 @@ class DCGAN(object):
 	    i = (count*num_thread + idx) % length;
 	    r = random.randint(0,2)
             input_img = scipy.misc.imread(file_list[shuf[i]]).reshape([224,224,1]).astype(np.float32)
+	    low_gt_img = scipy.misc.imread(label_list[shuf[i]]).reshape([224,224,3]).astype(np.float32)
 	    gt_img = scipy.misc.imread(label_list[shuf[i]]).reshape([224,224,3]).astype(np.float32)
 	    input_img = input_img/127.5 -1.
+	    low_gt_img = low_gt_img/127.5 -1.
 	    gt_img = gt_img/127.5 -1.
 	    rand_x = np.random.randint(64,224-64)
 	    rand_y = np.random.randint(64,224-64)
 	    input_img = scipy.ndimage.rotate(input_img,rot[r])
+	    low_gt_img = scipy.ndimage.rotate(low_gt_img,rot[r])
 	    gt_img = scipy.ndimage.rotate(gt_img,rot[r])
-            self.sess.run(self.enqueue_op,feed_dict={self.ir_image_single:input_img[rand_y:rand_y+64,rand_x:rand_x+64],self.normal_image_single:gt_img[rand_y:rand_y+64,rand_x:rand_x+64]})
+            self.sess.run(self.enqueue_op,feed_dict={self.ir_image_single:input_img[rand_y:rand_y+64,rand_x:rand_x+64],self.low_normal_image_single:low_gt_img[rand_y:rand_y+64,rand_x:rand_x+64],self.normal_image_single:gt_img[rand_y:rand_y+64,rand_x:rand_x+64]})
 	    count +=1
 		
