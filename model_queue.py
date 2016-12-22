@@ -58,9 +58,10 @@ class DCGAN(object):
 	self.keep_prob = tf.placeholder(tf.float32)
         #self.low_normal_images = tf.placeholder(tf.float32, [self.batch_size] + self.low_normal_image_shape,name='low_ir_images')
 	net  = networks(self.num_block,self.batch_size,self.df_dim)
-	self.low_G = net.generator_low(self.low_ir_images)
-        self.resized = tf.image.resize_bicubic(self.low_G,[256,256])
-	self.inputs = tf.concat(3,[self.resized,self.high_ir_images])
+	self.low_feat,self.low_G = net.generator_low(self.low_ir_images)
+        self.resized_G = tf.image.resize_bicubic(self.low_G,[256,256])
+        self.resized_feat = tf.image.resize_bicubic(self.low_feat,[256,256])
+	self.inputs = tf.concat(3,[self.resized_feat,self.high_ir_images])
 	self.concat = tf.concat(3,[self.inputs,self.high_normal_images])
 	self.cropped = tf.random_crop(self.concat ,[self.batch_size,64,64,7])
 	self.cropped_input = tf.slice(self.cropped,[0,0,0,0],[self.batch_size,64,64,4])
@@ -160,7 +161,7 @@ class DCGAN(object):
 	if self.use_queue:
 	    # creat thread
 	    coord = tf.train.Coordinator()
-            num_thread =4
+            num_thread =16
             for i in range(num_thread):
  	        t = threading.Thread(target=self.load_and_enqueue,args=(coord,low_datalist,low_labellist,high_datalist,high_labellist,shuf,i,num_thread))
 	 	t.start()

@@ -15,9 +15,10 @@ class networks(object):
 	g_bn2 = batch_norm(self.batch_size,name='low_g_bn2')
         g_nir2 =lrelu(g_bn2(conv2d(g_nir1,self.df_dim*4,k_h=3,k_w=3,name='low_g_nir2')))
 	g_bn3 = batch_norm(self.batch_size,name='low_g_bn3')
-        g_nir3 =lrelu(g_bn3(conv2d(g_nir2,self.df_dim*2,k_h=3,k_w=3,name='low_g_nir3')))
-        g_nir4 =conv2d(g_nir3,3,k_h=3,k_w=3,name='low_g_nir4')
-	return tf.tanh(g_nir4)
+        g_nir3_1 =conv2d(g_nir2,self.df_dim*2,k_h=3,k_w=3,name='low_g_nir3')
+        g_nir3_2 =lrelu(g_bn3(g_nir3_1))
+        g_nir4 =conv2d(g_nir3_2,3,k_h=3,k_w=3,name='low_g_nir4')
+	return tf.tanh(g_nir3_1), tf.tanh(g_nir4)
 
 
     def generator_high(self,nir):
