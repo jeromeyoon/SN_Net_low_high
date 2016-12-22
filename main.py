@@ -14,9 +14,9 @@ flags.DEFINE_float("g_learning_rate", 0.0002, "Learning rate of for adam [0.0002
 flags.DEFINE_float("d_learning_rate", 0.0002, "Learning rate of for adam [0.0002]")
 flags.DEFINE_float("beta1", 0.5, "Momentum term of adam [0.5]")
 flags.DEFINE_integer("train_size", np.inf, "The size of train images [np.inf]")
-flags.DEFINE_integer("batch_size", 32, "The size of batch images [64]")
+flags.DEFINE_integer("batch_size", 16, "The size of batch images [64]")
 flags.DEFINE_integer("image_size", 108, "The size of image to use (will be center cropped) [108]")
-flags.DEFINE_string("dataset", "1211_sn_net_nopair", "The name of dataset [celebA, mnist, lsun]")
+flags.DEFINE_string("dataset", "1221_L2_sn_net_scale", "The name of dataset [celebA, mnist, lsun]")
 flags.DEFINE_string("checkpoint_dir", "checkpoint", "Directory name to save the checkpoints [checkpoint]")
 flags.DEFINE_string("sample_dir", "output", "Directory name to save the image samples [samples]")
 flags.DEFINE_boolean("is_train", False, "True for training, False for testing [False]")
@@ -38,12 +38,13 @@ def main(_):
     	os.makedirs(os.path.join('./logs',time.strftime('%d%m')))
 
     gpu_config = tf.GPUOptions(per_process_gpu_memory_fraction=FLAGS.gpu)
+    #with tf.Session() as sess:
     with tf.Session(config=tf.ConfigProto(gpu_options=gpu_config)) as sess:
         if FLAGS.is_train:
             dcgan = DCGAN(sess, image_size=FLAGS.image_size, batch_size=FLAGS.batch_size,\
 	    num_block = FLAGS.num_block,dataset_name=FLAGS.dataset,is_crop=FLAGS.is_crop, checkpoint_dir=FLAGS.checkpoint_dir)
         else:
-	    dcgan = EVAL(sess, batch_size=1,num_block=FLAGS.num_block,ir_image_shape=[600,800,1],normal_image_shape=[600,800,3],dataset_name=FLAGS.dataset,\
+	    dcgan = EVAL(sess, batch_size=1,num_block=FLAGS.num_block,low_ir_image_shape=[64,64,1],high_ir_image_shape=[256,256,4],dataset_name=FLAGS.dataset,\
                       is_crop=False, checkpoint_dir=FLAGS.checkpoint_dir)
 	    print('deep model test \n')
 
@@ -56,6 +57,7 @@ def main(_):
 	    print '3: Estimating Normal maps according to Light directions and object tilt angles \n'
 	    x = input('Selecting a Evaluation mode:')
             VAL_OPTION = int(x)
+
             if VAL_OPTION ==1: # arbitary dataset 
                 print("Computing arbitary dataset ")
 		trained_models = glob.glob(os.path.join(FLAGS.checkpoint_dir,FLAGS.dataset,'DCGAN.model*'))
@@ -112,7 +114,7 @@ def main(_):
 			    img = '/research2/IR_normal_small/save%03d/%d' % (list_val[idx],idx2)
 			    input_ = scipy.misc.imread(img+'/3.bmp').astype(float)
 			    gt_ = scipy.misc.imread('/research2/IR_normal_small/save016/1/12_Normal.bmp').astype(float)
-			    input_ = scipy.misc.imresize(input_,[600,800])
+			    input_ = scipy.misc.imresize(input_,[300,400])
 
 			    input_  = (input_/127.5)-1. # normalize -1 ~1
 			    gt_ = scipy.misc.imresize(gt_,[600,800])
@@ -145,8 +147,8 @@ def main(_):
 		savepath ='./Deconv_L1_result'
 		if not os.path.exists(os.path.join(savepath)):
 		    os.makedirs(os.path.join(savepath))
-		selec_model=[]
-		[selec_model.append(ii) for ii in range(0,len(save_files),2)]
+		selec_model=[-2]
+		#[selec_model.append(ii) for ii in range(0,len(save_files),2)]
                 for m in range(len(selec_model)):
 		    model = save_files[selec_model[m]]
 		    model = model.split('/')
@@ -158,28 +160,54 @@ def main(_):
 		        for idx2 in range(1,10): #tilt angles 1~9 
 		            for idx3 in range(1,13): # light source 
 			        print("Selected material %03d/%d" % (list_val[idx],idx2))
-			        img = '/research2/IR_normal_small/save%03d/%d' % (list_val[idx],idx2)
-			        input_ = scipy.misc.imread(img+'/%d.bmp' %idx3).astype(float) #input NIR image
-			        input_ = scipy.misc.imresize(input_,[600,800])
-			        input_  = input_/127.5 -1.0 # normalize -1 ~1
-			        input_ = np.reshape(input_,(1,600,800,1)) 
-			        input_ = np.array(input_).astype(np.float32)
+			        img = '/research2/ECCV_dataset_resized/save%03d/%d' % (list_val[idx],idx2)
+			        #img = '/research2/IR_normal_small/save%03d/%d' % (list_val[idx],idx2)
+			        input_ = scipy.misc.imread(img+'/%d.bmp' %idx3).astype(np.float32) #input NIR image
+			        #input_ = np.reshape(input_,(256,256,1))
+			        low_input_ = scipy.misc.imresize(input_,[64,64])
+			        low_input_ = np.reshape(low_input_,(1,64,64,1))
+			        low_input_  = low_input_/127.5 -1.0 # normalize -1 ~1
+			        input_ = np.reshape(input_,(256,256,1))
+				input_ = input_/127.5 -1.
+			        #low_input_ = np.reshape(low_input_,(1,64,64,1)) 
+			        low_input_ = np.array(low_input_).astype(np.float32)
+				"""
 			        gt_ = scipy.misc.imread(img+'/12_Normal.bmp').astype(float)
 			        gt_ = np.sum(gt_,axis=2)
 			        gt_ = scipy.misc.imresize(gt_,[600,800])
 			        gt_ = np.reshape(gt_,[1,600,800,1])
 			        mask =[gt_ >0.0][0]*1.0
 			        mean_mask = mean_nir * mask
+				"""
 			        #input_ = input_ - mean_mask	
 			        start_time = time.time() 
-			        sample = sess.run(dcgan.sampler, feed_dict={dcgan.ir_images: input_})
+			        low_sample = sess.run(dcgan.low_G, feed_dict={dcgan.low_ir_images: low_input_})
+				low_sample = np.squeeze(low_sample).astype(np.float32)
+				low_sample = scipy.ndimage.interpolation.zoom(low_sample,(4.0,4.0,1.0))
+				high_input_ = np.concatenate((low_sample,input_),axis=2)
+				high_input_ = np.reshape(high_input_,(1,256,256,4))
+			        high_sample = sess.run(dcgan.high_G, feed_dict={dcgan.high_ir_images: high_input_})
+				
 			        print('time: %.8f' %(time.time()-start_time))     
 			        # normalization #
-			        sample = np.squeeze(sample).astype(np.float32)
+				sample = np.squeeze(low_sample).astype(np.float32)
 			        output = np.sqrt(np.sum(np.power(sample,2),axis=2))
 			        output = np.expand_dims(output,axis=-1)
 			        output = sample/output
 			        output = (output+1.)/2.
+
+
+			        if not os.path.exists(os.path.join(savepath,'%03d/%d/%s' %(list_val[idx],idx2,model))):
+			            os.makedirs(os.path.join(savepath,'%03d/%d/%s' %(list_val[idx],idx2,model)))
+			        savename = os.path.join(savepath,'%03d/%d/%s/low_single_normal_%03d.bmp' % (list_val[idx],idx2,model,idx3))
+			        scipy.misc.imsave(savename, output)
+
+			        sample = np.squeeze(high_sample).astype(np.float32)
+			        output = np.sqrt(np.sum(np.power(sample,2),axis=2))
+			        output = np.expand_dims(output,axis=-1)
+			        output = sample/output
+			        output = (output+1.)/2.
+			
 			        if not os.path.exists(os.path.join(savepath,'%03d/%d/%s' %(list_val[idx],idx2,model))):
 			            os.makedirs(os.path.join(savepath,'%03d/%d/%s' %(list_val[idx],idx2,model)))
 			        savename = os.path.join(savepath,'%03d/%d/%s/single_normal_%03d.bmp' % (list_val[idx],idx2,model,idx3))
