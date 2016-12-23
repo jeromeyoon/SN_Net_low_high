@@ -32,7 +32,7 @@ class EVAL(object):
         #                            name='normal_images')
 
 	net  = networks(self.num_block,self.batch_size,self.df_dim)
-        self.low_G = net.generator_low(self.low_ir_images)
+        self.low_feat, self.low_G = net.generator_low(self.low_ir_images)
         self.high_G = net.generator_high(self.high_ir_images)
         #self.low_sampler = net.sampler_low(self.ir_images)
         #self.high_sampler = net.sampler_low(self.low_sampler)
