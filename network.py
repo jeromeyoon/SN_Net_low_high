@@ -9,21 +9,37 @@ class networks(object):
   
 
 
-    def generator_multiscale(self,low_nir,nir):
+    def generator_multiscale(self,low_nir,high_nir):
 
 	###### low #####
+	low_g_bn0 = batch_norm(self.batch_size,name='low_g_bn0')
+        low_g_nir0 =lrelu(low_g_bn0(conv2d(low_nir,self.df_dim,k_h=3,k_w=3,name='low_g_nir0')))
+	low_g_bn1 = batch_norm(self.batch_size,name='low_g_bn1')
+        low_g_nir1 =lrelu(low_g_bn1(conv2d(low_g_nir0,self.df_dim*2,k_h=3,k_w=3,name='low_g_nir1')))
+	low_g_bn = batch_norm(self.batch_size,name='low_g_bn')
+	low  = low_g_bn(tf.image.resize_nearest_neighbor(low_g_nir1,high_nir.get_shape().as_list()[1:3]))
 
+	###### High  #####
+
+	high_g_bn0 = batch_norm(self.batch_size,name='high_g_bn0')
+        high_g_nir0 =lrelu(high_g_bn0(conv2d(high_nir,self.df_dim,k_h=3,k_w=3,name='high_g_nir0')))
+	high_g_bn1 = batch_norm(self.batch_size,name='high_g_bn1')
+        high_g_nir1 =lrelu(high_g_bn1(conv2d(high_g_nir0,self.df_dim*2,k_h=3,k_w=3,name='high_g_nir1')))
+
+	high_g_bn2 = batch_norm(self.batch_size,name='high_g_bn2')
+        high_g_nir2 =lrelu(high_g_bn2(conv2d(high_g_nir1,self.df_dim*2,k_h=3,k_w=3,name='high_g_nir2')))
+	high_g_bn3 = batch_norm(self.batch_size,name='high_g_bn3')
+        high =lrelu(high_g_bn3(conv2d(high_g_nir2,self.df_dim*4,k_h=3,k_w=3,name='high_g_nir3')))
 	
-        g_nir0 =lrelu(conv2d(nir,self.df_dim*2,k_h=3,k_w=3,name='low_g_nir0'))
-	g_bn1 = batch_norm(self.batch_size,name='low_g_bn1')
-        g_nir1 =lrelu(g_bn1(conv2d(g_nir0,self.df_dim*4,k_h=3,k_w=3,name='low_g_nir1')))
-	g_bn2 = batch_norm(self.batch_size,name='low_g_bn2')
-        g_nir2 =lrelu(g_bn2(conv2d(g_nir1,self.df_dim*4,k_h=3,k_w=3,name='low_g_nir2')))
-	g_bn3 = batch_norm(self.batch_size,name='low_g_bn3')
-        g_nir3_1 =conv2d(g_nir2,self.df_dim*2,k_h=3,k_w=3,name='low_g_nir3')
-        g_nir3_2 =lrelu(g_bn3(g_nir3_1))
-        g_nir4 =conv2d(g_nir3_2,3,k_h=3,k_w=3,name='low_g_nir4')
-	return tf.tanh(g_nir3_1), tf.tanh(g_nir4)
+	g_nir = tf.concat(3,[low,high])
+	g_bn0 = batch_norm(self.batch_size,name='g_bn0')
+        g_nir0 =lrelu(g_bn0(conv2d(g_nir,self.df_dim*4,k_h=3,k_w=3,name='g_nir0')))
+	g_bn1 = batch_norm(self.batch_size,name='g_bn1')
+        g_nir1 =lrelu(g_bn1(conv2d(g_nir0,self.df_dim*2,k_h=3,k_w=3,name='g_nir1')))
+        g_nir2 =conv2d(g_nir1,3,k_h=1,k_w=1,name='g_nir2')
+	return tf.tanh(g_nir2)
+
+
 
     def generator_low(self,nir):
 	#g_bn0 = batch_norm(self.batch_size,name='g_bn0')
